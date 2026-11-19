@@ -9,13 +9,16 @@ import { GeologyModel } from './core/geology.js';
 import { buildTerrainMesh, setTerrainOpacity, niceStep } from './scene/terrainMesh.js';
 import { buildProbes, updateLabelLift, setHighlight, qcColor, rgbCss } from './scene/probes.js';
 import { buildBlockModel, setBlockExplode, setBlockOpacity } from './scene/blockModel.js';
-import { SectionDrawTool, buildCurtain, sectionClipPlane } from './section/sectionTool.js';
+import { buildGwlSurface } from './scene/gwlSurface.js';
+import { buildGwlModel } from './core/gwl.js';
+import { SectionDrawTool, SectionEditor, buildCurtain, sectionClipPlane } from './section/sectionTool.js';
 import { computeSection } from './section/compute.js';
 import { renderProfileSVG, interpTerrain, interpStack } from './section/profileSvg.js';
 import { cptChart, dpshChart, boreholeLog } from './ui/charts.js';
 import { SBT_ZONES, sbtIntervals } from './core/cpt.js';
 import { DPSH_CLASSES, dpshClass, dpshIntervals } from './core/dpsh.js';
 import { generateSampleProject } from './data/sample.js';
+import { saveProject, loadSavedProject } from './data/autosave.js';
 import { importTable, emptyStaging, projectToStaging, stagingToProject, exportCSVs, download, parseTable, detectKind } from './data/io.js';
 
 // ------------------------------------------------------------------ pomoćne
@@ -90,6 +93,7 @@ function loadProject(p, { fit = true } = {}) {
   content.add(S.terrainMesh);
   buildProbeLayer();
   buildBlockLayer();
+  buildGwlLayer();
 
   // izohipse — ponuđene ekvidistance
   const rel = Math.max(terrain.extent.relief, 0.5);
@@ -102,6 +106,7 @@ function loadProject(p, { fit = true } = {}) {
   // preseci iz projekta
   S.sections = (p.sections || []).map((s) => ({ ...s }));
   S.active = null;
+  sectionEditor.setSection(null);
   S.sections.forEach(buildSectionGeometry);
   $('drawer').hidden = true;
 
@@ -112,6 +117,7 @@ function loadProject(p, { fit = true } = {}) {
   renderSectionList();
   applyAll();
   if (fit) homeView(false);
+  scheduleSave();
   return true;
 }
 
@@ -134,6 +140,17 @@ function buildBlockLayer() {
   content.add(S.block.group);
   setBlockExplode(S.block, +$('explode').value);
   setBlockOpacity(S.block, +$('blockOp').value);
+  applyClip();
+  applyLayerVisibility();
+}
+
+function buildGwlLayer() {
+  if (S.gwlSurf) { disposeTree(S.gwlSurf.group); content.remove(S.gwlSurf.group); }
+  const t = S.terrain, b = t.bounds;
+  const region = S.block?.group.userData.region || { x0: b.minE - t.E0, x1: b.maxE - t.E0, y0: b.minN - t.N0, y1: b.maxN - t.N0 };
+  S.gwlModel = buildGwlModel(S.project); // posle buildProbes: _z0 je postavljen
+  S.gwlSurf = buildGwlSurface(S.gwlModel, t, region);
+  content.add(S.gwlSurf.group);
   applyClip();
   applyLayerVisibility();
 }
@@ -180,6 +197,7 @@ function applyLayerVisibility() {
       if (u.top) u.top.visible = !L.terrain || terrOp < 0.999 || +$('explode').value > 0;
     }
   }
+  if (S.gwlSurf) S.gwlSurf.group.visible = !!L.gwlSurf;
   curtains.visible = L.curtain;
   for (const s of S.sections) s.labelsObj?.forEach((o) => (o.visible = L.curtain));
 }
@@ -227,7 +245,7 @@ function renderLegends() {
     applyLayerVisibility();
   }));
   if ($('cptColor').value === 'sbt') {
-    $('sbtLegend').innerHTML = Object.entries(SBT_ZONES).filter(([k]) => k >= 2).map(([k, z]) => `<div class="row"><span class="sw" style="background:${z.color}"></span><span class="code">${k}</span><span class="nm">${z.name}</span></div>`).join('') +
+    $('sbtLegend').innerHTML = Object.entries(SBT_ZONES).map(([k, z]) => `<div class="row"><span class="sw" style="background:${z.color}"></span><span class="code">${k}</span><span class="nm">${z.name}</span></div>`).join('') +
       '<div class="note">Poluprečnik CPT stuba ~ log q<sub>c</sub> (0,1–40 MPa).</div>';
   } else {
     $('sbtLegend').innerHTML = [0.3, 1, 3, 10, 30].map((q) => `<div class="row"><span class="sw" style="background:${rgbCss(qcColor(q))}"></span><span class="nm">q<sub>c</sub> = ${f(q, q < 1 ? 1 : 0)} MPa</span></div>`).join('');
@@ -543,9 +561,39 @@ const drawTool = new SectionDrawTool(viewer, () => S.terrainMesh, null, {
     openSection(sec);
   },
   onCancel: () => setDrawUI(false),
-  onChange: (pts, L) => {
+  onChange: (pts, L, snap) => {
     const len = L ?? pts.reduce((s, p, i) => (i ? s + Math.hypot(p.E - pts[i - 1].E, p.N - pts[i - 1].N) : 0), 0);
-    $('drawLen').textContent = pts.length ? `${pts.length} tem. · ${f(len, 1)} m` : '';
+    $('drawLen').textContent = (pts.length ? `${pts.length} tem. · ${f(len, 1)} m` : '') + (snap ? `  → ${snap}` : '');
+  },
+  getSnapTargets,
+});
+
+/** Ušća vidljivih istražnih radova — tačke za hvatanje temena preseka. */
+function getSnapTargets() {
+  if (!S.probes || !S.terrain) return [];
+  const on = { bh: S.layers.bh, cpt: S.layers.cpt, dpsh: S.layers.dpsh };
+  const t = S.terrain;
+  return S.probes.items.filter((i) => on[i.kind]).map(({ item }) => ({
+    id: item.id, E: item.E, N: item.N,
+    local: new THREE.Vector3(item.E - t.E0, (item._z0 ?? item.Z) - t.Z0, -(item.N - t.N0)),
+    label: item.label,
+  }));
+}
+
+// izmena aktivnog preseka: prevlačenje temena, desni klik briše, dvoklik na liniju dodaje teme
+const sectionEditor = new SectionEditor(viewer, fx, {
+  getTerrainMesh: () => S.terrainMesh,
+  getTerrain: () => S.terrain,
+  getSnapTargets,
+  onDragStart: (sec) => { if (sec.curtain) sec.curtain.visible = false; },
+  onCommit: (sec) => {
+    buildSectionGeometry(sec);
+    sectionEditor.setSection(sec);
+    markSectionLabels();
+    renderSectionList();
+    applyClip();
+    applyLayerVisibility();
+    renderProfile();
   },
 });
 
@@ -555,6 +603,8 @@ function setDrawUI(on) {
   $('drawHint').hidden = !on;
   $('viewport').classList.toggle('drawing', on);
   if (!on) $('drawLen').textContent = '';
+  sectionEditor.enabled = !on;
+  sectionEditor.setSection(on ? null : S.active);
 }
 function startDraw() {
   if (!S.terrain) return;
@@ -595,7 +645,7 @@ function renderSectionList() {
       e.stopPropagation();
       if (sec.curtain) { disposeTree(sec.curtain); curtains.remove(sec.curtain); }
       S.sections = S.sections.filter((s) => s !== sec);
-      if (S.active === sec) { S.active = null; $('drawer').hidden = true; S.clip.on = false; applyClip(); }
+      if (S.active === sec) { S.active = null; $('drawer').hidden = true; S.clip.on = false; applyClip(); sectionEditor.setSection(null); }
       renderSectionList();
       markSectionLabels();
       syncProjectSections();
@@ -607,11 +657,28 @@ function renderSectionList() {
 
 function syncProjectSections() {
   S.project.sections = S.sections.map((s) => ({ id: s.id, name: s.name, labels: s.labels, vertices: s.vertices, buffer: s.buffer }));
+  scheduleSave();
+}
+
+// ------------------------------------------------------------------ automatsko čuvanje
+const serializeProject = () => JSON.stringify(S.project, (key, v) => (key.startsWith('_') || key === 'label' ? undefined : v));
+let saveTimer = null;
+function scheduleSave() {
+  if (!S.project) return;
+  clearTimeout(saveTimer);
+  $('saveState').textContent = 'čuvanje…';
+  saveTimer = setTimeout(async () => {
+    const ok = await saveProject(serializeProject(), { isDemo: S.isDemo });
+    const t = new Date();
+    $('saveState').textContent = ok ? `sačuvano ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : 'automatsko čuvanje nije dostupno';
+    $('saveState').title = ok ? 'Projekat je sačuvan u ovom pregledaču i biće vraćen pri sledećem otvaranju.' : 'Pregledač ne dozvoljava lokalno čuvanje (npr. privatni prozor). Izvezi projekat (.json).';
+  }, 1200);
 }
 
 function openSection(sec) {
   if (!sec?.data) return;
   S.active = sec;
+  if (!drawTool.active) sectionEditor.setSection(sec);
   $('drawer').hidden = false;
   $('secBuffer').value = sec.buffer ?? 20;
   $('btnClip').disabled = false;
@@ -624,6 +691,7 @@ $('secSelect').addEventListener('change', () => openSection(S.sections.find((s) 
 $('drawerClose').onclick = () => {
   $('drawer').hidden = true; S.active = null; S.clip.on = false; applyClip();
   $('btnClip').disabled = true; renderSectionList(); markSectionLabels(); hoverMarker.visible = false;
+  sectionEditor.setSection(null);
 };
 $('drawerMax').onclick = () => { $('drawer').classList.toggle('max'); $('drawer').style.height = ''; requestAnimationFrame(renderProfile); };
 $('secBuffer').addEventListener('change', () => {
@@ -736,6 +804,7 @@ function applyClip() {
   const mats = [];
   if (S.terrainMesh) mats.push(S.terrainMesh.material);
   if (S.block) mats.push(...S.block.units.map((u) => u.material));
+  if (S.gwlSurf?.material) mats.push(S.gwlSurf.material);
   for (const m of mats) { m.clippingPlanes = planes; m.needsUpdate = true; }
   $('btnClip').classList.toggle('on', !!on);
 }
@@ -893,9 +962,12 @@ $('fileInput').addEventListener('change', (e) => { handleFiles(e.target.files); 
   window.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; $('dropOverlay').hidden = true; handleFiles(e.dataTransfer.files); });
 }
 
-$('btnDemo').onclick = () => { loadProject(generateSampleProject()); S.isDemo = true; toast('Učitan demonstracioni projekat. Klikni „Nacrtaj presek” i zadaj liniju po terenu.'); };
+$('btnDemo').onclick = () => {
+  if (S.project && !S.isDemo && !confirm('Primer zamenjuje trenutni projekat (i njegovu automatski sačuvanu kopiju).\nAko ti treba, prvo ga izvezi: Izvoz → Projekat (.json).\n\nUčitati primer?')) return;
+  loadProject(generateSampleProject()); S.isDemo = true; toast('Učitan demonstracioni projekat. Klikni „Nacrtaj presek” i zadaj liniju po terenu.');
+};
 $('btnHelp').onclick = () => $('helpDlg').showModal();
-$('projName').addEventListener('change', () => { if (S.project) S.project.name = $('projName').value; });
+$('projName').addEventListener('change', () => { if (S.project) { S.project.name = $('projName').value; scheduleSave(); } });
 
 $('btnExport').onclick = (e) => { e.stopPropagation(); $('exportMenu').classList.toggle('open'); };
 document.addEventListener('click', () => $('exportMenu').classList.remove('open'));
@@ -904,7 +976,7 @@ $('exportMenu').addEventListener('click', (e) => {
   if (!k || !S.project) return;
   if (k === 'json') {
     syncProjectSections();
-    const txt = JSON.stringify(S.project, (key, v) => (key.startsWith('_') || key === 'label' ? undefined : v));
+    const txt = serializeProject();
     download(`${fileBase()}.geoteren.json`, txt, 'application/json');
   } else if (k === 'csv') {
     const files = exportCSVs(S.project);
@@ -931,7 +1003,22 @@ window.addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------------ start
 readLayers();
-loadProject(generateSampleProject());
-S.isDemo = true;
+(async () => {
+  // vrati poslednji projekat iz ovog pregledača, inače demo
+  const saved = await loadSavedProject();
+  if (saved?.json) {
+    try {
+      const p = JSON.parse(saved.json);
+      p.cpts ||= []; p.dpsh ||= []; p.soils ||= []; p.sections ||= [];
+      if (loadProject(p)) {
+        S.isDemo = !!saved.isDemo;
+        if (!S.isDemo) toast(`Vraćen poslednji projekat „${p.name}” (sačuvan ${new Date(saved.savedAt).toLocaleString('sr-Latn')}).`);
+        return;
+      }
+    } catch { /* oštećen zapis — učitaj demo */ }
+  }
+  loadProject(generateSampleProject());
+  S.isDemo = true;
+})();
 window.__geo = S; // za proveru iz konzole
-window.__geoApi = { drawTool, openSection, viewer, applyClip, homeView, handleFiles };
+window.__geoApi = { drawTool, sectionEditor, openSection, viewer, applyClip, homeView, handleFiles };

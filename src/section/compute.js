@@ -1,3 +1,5 @@
+import { buildGwlModel } from '../core/gwl.js';
+
 /**
  * Proračun geotehničkog preseka duž poligonalne linije (E,N temena).
  * Vraća profil terena, granice interpretiranih jedinica i istražne radove projektovane na presek.
@@ -57,21 +59,9 @@ export function computeSection(vertices, { terrain, geology, project, buffer = 1
   project.dpsh.forEach((d) => consider('dpsh', d));
   probes.sort((a, b) => a.s - b.s);
 
-  // NPV linija — interpolacija kote NPV iz istražnih radova (IDW) duž preseka
-  const gw = [...project.boreholes, ...project.cpts, ...project.dpsh]
-    .filter((t) => t.gwl != null && isFinite(t.gwl))
-    .map((t) => ({ E: t.E, N: t.N, z: (t._z0 ?? t.Z) - t.gwl }));
-  if (gw.length) {
-    for (const smp of samples) {
-      let sw = 0, sv = 0, exact = null;
-      for (const g of gw) {
-        const d2 = (g.E - smp.E) ** 2 + (g.N - smp.N) ** 2;
-        if (d2 < 1e-4) { exact = g.z; break; }
-        const w = 1 / d2; sw += w; sv += w * g.z;
-      }
-      smp.gwl = Math.min(exact ?? sv / sw, smp.zt);
-    }
-  }
+  // NPV linija — isti model kao 3D površ (trend + IDW), ograničen kotom terena
+  const gwm = buildGwlModel(project);
+  if (gwm) for (const smp of samples) smp.gwl = Math.min(gwm.at(smp.E, smp.N), smp.zt);
 
   let zmax = -Infinity, zmin = Infinity;
   for (const s of samples) if (isFinite(s.zt)) { zmax = Math.max(zmax, s.zt); zmin = Math.min(zmin, s.zt); }
@@ -82,5 +72,5 @@ export function computeSection(vertices, { terrain, geology, project, buffer = 1
     zmin = Math.min(zmin, z0 - depth);
   }
   if (geology?.valid) zmin = Math.min(zmin, geology.base);
-  return { vertices: V, chainages: ch, L, samples, probes, zmin, zmax, K, units: geology?.valid ? geology.units.slice(0, K) : [], hasGwl: gw.length > 0 };
+  return { vertices: V, chainages: ch, L, samples, probes, zmin, zmax, K, units: geology?.valid ? geology.units.slice(0, K) : [], hasGwl: !!gwm };
 }

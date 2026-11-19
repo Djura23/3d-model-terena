@@ -25,6 +25,9 @@ npm run build      # → dist/index.html
 | **DPSH-B** | Kvadratni stepenasti stub: širina i boja po N20 ekvivalentu. Podržani su zapisi N20 (standard, SRPS EN ISO 22476-2) i N10. |
 | **Geološki model** | Zatvorena tela litoloških jedinica (blok-dijagram). Debljine se interpoliraju IDW metodom i slažu od terena naniže, pa model prolazi tačno kroz bušotine. Ima providnost, razmicanje slojeva i skrivanje pojedinih jedinica. |
 | **Presek mišem** | Klikovi po terenu zadaju poligonalnu liniju (Shift = korak od 15°). Rezultat: 3D „zavesa“ sa teksturom profila i 2D profil (SVG) sa šrafurama, bušotinama, q<sub>t</sub> krivama, SBTn trakama, DPSH stubićima, NPV linijom, stacionažama, kotama terena i razmernikom. Istražni radovi iz koridora ±X m projektuju se na presek uz oznaku L/D i rastojanje. |
+| **Izmena preseka** | Klik kod bušotine ili sonde (ili njene oznake) hvata teme tačno u ušće. Dok je presek otvoren, temena se prevlače mišem, desni klik briše teme, a dvoklik na liniju dodaje novo. |
+| **NPV** | Diskovi u sondama i providna površ NPV (ravan trenda + IDW). Isti model daje i liniju NPV u preseku. |
+| **Automatsko čuvanje** | Projekat se čuva u pregledaču (IndexedDB) i vraća pri sledećem otvaranju. Za prenos na drugi računar koristi se izvoz u `.json`. |
 | **Odsecanje** | Odseca teren i model po ravni preseka. Dugme „⊥ 3D pogled“ postavlja kameru upravno na presek. |
 | **Merenje** | Horizontalno i koso rastojanje, Δz i nagib između dve tačke. |
 | **Izvoz** | Projekat (.json), CSV tabele (isti format kao za uvoz), profil u SVG/PNG, snimak 3D prikaza. |
@@ -54,7 +57,7 @@ Legenda (opc.):   sredina;naziv;boja;redosled
 
 - Geološki model između bušotina je **interpretacija**. Ne može da predvidi sočiva i isklinjavanja koja nijedna bušotina nije zahvatila. U 2D profilu su interpretirane granice isprekidane.
 - CPT i DPSH-B ne ulaze u interpolaciju slojeva. Služe za proveru modela.
-- SBTn zone 1, 8 i 9 se ne izdvajaju (klasifikacija ide samo po I<sub>c</sub>). DPSH klase su indikativne.
+- SBTn zone 2–7 određuju se po I<sub>c</sub>, a zone 1, 8 i 9 po približnim granicama na Q<sub>tn</sub>–F<sub>r</sub> dijagramu (Robertson 2010). DPSH klase su indikativne.
 
 ## Struktura
 

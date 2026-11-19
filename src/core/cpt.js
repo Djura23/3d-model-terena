@@ -12,6 +12,8 @@ export const SBT_ZONES = {
   5: { name: 'Peskovite mešavine', color: '#8cc084' },
   6: { name: 'Peskovi – čist do prašinast pesak', color: '#e6c84f' },
   7: { name: 'Šljunkovit pesak do zbijen pesak', color: '#e0863a' },
+  8: { name: 'Vrlo krut pesak do glinovit pesak (prekonsolid./cementiran)', color: '#9b6b3c' },
+  9: { name: 'Vrlo kruto sitnozrno tlo (prekonsolid./cementirano)', color: '#4f5966' },
 };
 
 export function zoneFromIc(ic) {
@@ -22,6 +24,24 @@ export function zoneFromIc(ic) {
   if (ic < 2.95) return 4;
   if (ic < 3.6) return 3;
   return 2;
+}
+
+/**
+ * SBTn zona sa normalizovanog dijagrama Qtn–Fr (Robertson 1990/2009).
+ * Zone 2–7 po Ic; zona 1 i zone 8/9 po granicama sa dijagrama (aproksimacije Robertson 2010):
+ *  - zona 1:   Qtn < 12·exp(−1.4·Fr)
+ *  - zone 8/9: Fr > 1.5 i Qtn > 1 / (0.005(Fr−1) − 0.0003(Fr−1)² − 0.002); 8 ako je Ic ≤ 2.6, inače 9
+ */
+export function sbtnZone(Qtn, Fr, ic) {
+  if (!isFinite(ic)) return null;
+  if (isFinite(Qtn) && isFinite(Fr)) {
+    if (Qtn < 12 * Math.exp(-1.4 * Fr)) return 1;
+    if (Fr > 1.5) {
+      const d = 0.005 * (Fr - 1) - 0.0003 * (Fr - 1) ** 2 - 0.002;
+      if (d > 0 && Qtn > 1 / d) return ic <= 2.6 ? 8 : 9;
+    }
+  }
+  return zoneFromIc(ic);
 }
 
 /**
@@ -55,7 +75,7 @@ export function processCPT(data, { gwl = 0, a = 0.8 } = {}) {
       n = nn;
     }
     out.push({
-      z: d.z, qc: d.qc, fs, u2, qt: qt / 1000, rf, gamma, sv, u0, svEff, Qtn, F, ic, n, zone: zoneFromIc(ic),
+      z: d.z, qc: d.qc, fs, u2, qt: qt / 1000, rf, gamma, sv, u0, svEff, Qtn, F, ic, n, zone: sbtnZone(Qtn, F, ic),
     });
   }
   return out;

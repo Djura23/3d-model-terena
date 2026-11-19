@@ -37,6 +37,7 @@ kbd { font: 11px ui-monospace, Consolas, monospace; background: #fff; border: 1p
 .proj-name { background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; font-size: 14px; font-weight: 600; color: #fff; min-width: 120px; width: 40ch; max-width: 100%; text-overflow: ellipsis; }
 .proj-name:hover, .proj-name:focus { border-color: #4a525b; outline: none; background: #262c33; }
 .proj-crs { color: #9aa3ad; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.save-state { color: #7d8790; font-size: 11.5px; white-space: nowrap; }
 .top-actions { display: flex; gap: 6px; align-items: center; }
 .topbar .btn { background: #2b3239; border-color: #3a424b; color: #e9ecef; }
 .topbar .btn:hover { background: #353d45; }
@@ -74,6 +75,7 @@ input[type='checkbox'] { accent-color: var(--accent); margin: 0; }
 .sym-cpt { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 10px solid #2b3a55; }
 .sym-dpsh { background: #3b2f5c; transform: rotate(45deg) scale(0.8); }
 .sym-gwl { height: 4px; border-radius: 2px; background: var(--blue); }
+.sym-gwl-surf { border-radius: 2px; background: rgba(42, 125, 225, 0.45); border: 1px solid var(--blue); }
 
 .ctl { display: grid; grid-template-columns: 112px 1fr 42px; align-items: center; gap: 6px; margin: 5px 0; }
 .ctl > span { color: var(--muted); font-size: 12px; }

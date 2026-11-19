@@ -16,6 +16,7 @@
     <div class="proj">
       <input id="projName" class="proj-name" spellcheck="false" title="Naziv projekta" />
       <span id="projCrs" class="proj-crs"></span>
+      <span id="saveState" class="save-state"></span>
     </div>
     <div class="top-actions">
       <label class="btn" title="Učitaj CSV/TXT/XYZ tabele ili .json projekat (može više fajlova odjednom, ili ih prevuci na prozor)">
@@ -48,7 +49,8 @@
           <label><input type="checkbox" data-layer="bh" checked /> <i class="sym sym-bh"></i>Bušotine</label>
           <label><input type="checkbox" data-layer="cpt" checked /> <i class="sym sym-cpt"></i>CPT</label>
           <label><input type="checkbox" data-layer="dpsh" checked /> <i class="sym sym-dpsh"></i>DPSH-B</label>
-          <label><input type="checkbox" data-layer="gwl" checked /> <i class="sym sym-gwl"></i>NPV</label>
+          <label><input type="checkbox" data-layer="gwl" checked /> <i class="sym sym-gwl"></i>NPV u sondama</label>
+          <label><input type="checkbox" data-layer="gwlSurf" checked /> <i class="sym sym-gwl-surf"></i>NPV površ</label>
           <label><input type="checkbox" data-layer="labels" checked /> Oznake</label>
           <label><input type="checkbox" data-layer="block" checked /> Geološki model</label>
           <label><input type="checkbox" data-layer="curtain" checked /> Preseci u 3D</label>
@@ -107,7 +109,7 @@
           <button class="tbtn" id="btnMeasure" title="Merenje rastojanja i nagiba (klik–klik)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
         </div>
         <div class="draw-hint" id="drawHint" hidden>
-          <b>Crtanje preseka:</b> klik — teme · <kbd>Shift</kbd> — korak 15° · dvoklik / <kbd>Enter</kbd> — kraj · <kbd>Backspace</kbd> — poništi · <kbd>Esc</kbd> — odustani
+          <b>Crtanje preseka:</b> klik — teme (kod bušotine/sonde hvata ušće) · <kbd>Shift</kbd> — korak 15° · dvoklik / <kbd>Enter</kbd> — kraj · <kbd>Backspace</kbd> — poništi · <kbd>Esc</kbd> — odustani
           <span id="drawLen"></span>
         </div>
         <div class="compass" id="compass" title="Okreni ka severu"><div class="needle"><span>S</span></div></div>
@@ -160,7 +162,8 @@
       <ul>
         <li><b>Levi taster</b> — rotacija · <b>desni taster / Shift+levi</b> — pomeranje · <b>točkić</b> — zum ka kursoru</li>
         <li><b>Klik</b> na bušotinu/sondu — detalji i dijagram · <b>dvoklik</b> u listi — prelet do tačke</li>
-        <li><b>Nacrtaj presek</b> — klikovi po terenu zadaju temena (poligonalna linija), dvoklik/Enter završava. Shift zaključava pravac na 15°.</li>
+        <li><b>Nacrtaj presek</b> — klikovi po terenu zadaju temena (poligonalna linija), dvoklik/Enter završava. Shift zaključava pravac na 15°. Klik blizu bušotine/sonde ili njene oznake hvata teme tačno u ušće.</li>
+        <li><b>Izmena preseka</b> — dok je presek otvoren: prevuci teme mišem (hvata i istražne radove), desni klik na teme ga briše, dvoklik na liniju preseka dodaje novo teme.</li>
         <li>U 2D profilu pomeranje miša pokazuje kotu, dubinu i jedinicu; ista tačka se obeležava i u 3D.</li>
       </ul>
       <h4>Formati za uvoz (zaglavlje obavezno, redosled kolona nebitan)</h4>
@@ -175,7 +178,7 @@ Legenda (opc.):   sredina;naziv;boja;redosled      boja npr. #a87b55</pre>
       <ul>
         <li><b>Teren</b>: Delaunay TIN iz topografskih tačaka (bez izmišljanja između tačaka). Ako topografije nema, površ se interpolira iz kota ušća (IDW) — uz upozorenje.</li>
         <li><b>Geološki model</b>: debljine jedinica interpolirane IDW metodom i slagane od terena naniže — prolazi tačno kroz bušotine, granice se ne seku. Bušotina koja nije probila jedinicu daje samo donju granicu debljine. To je <i>interpretacija</i>; u preseku je prikazana isprekidanim granicama.</li>
-        <li><b>CPT</b>: q<sub>t</sub> = q<sub>c</sub> + u<sub>2</sub>(1−a), γ po Robertson &amp; Cabal (2010), Q<sub>tn</sub>, F<sub>r</sub>, I<sub>c</sub> iterativno (Robertson 2009), SBTn zone 2–7 po I<sub>c</sub>. Poluprečnik 3D stuba ~ log q<sub>c</sub>.</li>
+        <li><b>CPT</b>: q<sub>t</sub> = q<sub>c</sub> + u<sub>2</sub>(1−a), γ po Robertson &amp; Cabal (2010), Q<sub>tn</sub>, F<sub>r</sub>, I<sub>c</sub> iterativno (Robertson 2009); SBTn zone 2–7 po I<sub>c</sub>, zone 1, 8 i 9 po granicama na Q<sub>tn</sub>–F<sub>r</sub> dijagramu. Poluprečnik 3D stuba ~ log q<sub>c</sub>.</li>
         <li><b>DPSH-B</b> (SRPS EN ISO 22476-2): N20; N10 se za klasifikaciju svodi na N20 ekv. (×2). Klase zbijenosti su indikativne.</li>
       </ul>
     </div>

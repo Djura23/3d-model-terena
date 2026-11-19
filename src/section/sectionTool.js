@@ -5,20 +5,48 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { SBT_ZONES } from '../core/cpt.js';
 
+const _v = new THREE.Vector3();
+
+/**
+ * Hvatanje za istražni rad: ako je kursor na ≤ px piksela od ušća ili od oznake rada, vraća njegove koordinate.
+ * targets: [{id, E, N, local: Vector3 (ušće u lokalnim koordinatama world grupe), label?: CSS2DObject}]
+ */
+export function snapToProbe(viewer, targets, clientX, clientY, px = 16) {
+  if (!targets?.length) return null;
+  const r = viewer.renderer.domElement.getBoundingClientRect();
+  let best = null, bd = px;
+  const test = (vec, dyPx) => {
+    vec.project(viewer.camera);
+    if (vec.z > 1 || vec.z < -1) return Infinity;
+    const sx = r.left + ((vec.x + 1) / 2) * r.width, sy = r.top + ((1 - vec.y) / 2) * r.height - dyPx;
+    return Math.hypot(sx - clientX, sy - clientY);
+  };
+  for (const t of targets) {
+    _v.copy(t.local);
+    viewer.world.localToWorld(_v);
+    let d = test(_v, 0);
+    if (t.label?.visible) { t.label.getWorldPosition(_v); d = Math.min(d, test(_v, 14)); } // oznaka je iznad svoje tačke
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best ? { E: best.E, N: best.N, snap: best.id } : null;
+}
+
 /**
  * Crtanje linije preseka mišem direktno po terenu.
  *  - klik: dodaj teme (rotacija/pomeranje pogleda i dalje rade — klik se razlikuje od prevlačenja)
+ *  - klik na/kod bušotine ili sonde: teme se "hvata" tačno u njeno ušće
  *  - dvoklik ili Enter: završi · Backspace: ukloni poslednje teme · Esc: odustani
  *  - Shift: pravac zaključan na 15° korake (ortogonalni preseci)
  */
 export class SectionDrawTool {
-  constructor(viewer, getTerrainMesh, terrain, { onFinish, onChange, onCancel } = {}) {
+  constructor(viewer, getTerrainMesh, terrain, { onFinish, onChange, onCancel, getSnapTargets } = {}) {
     this.v = viewer;
     this.getTerrainMesh = getTerrainMesh;
     this.terrain = terrain;
     this.onFinish = onFinish; this.onChange = onChange; this.onCancel = onCancel;
+    this.getSnapTargets = getSnapTargets;
     this.active = false;
-    this.points = []; // {E,N}
+    this.points = []; // {E, N, snap?}
     this.group = new THREE.Group();
     this.group.name = 'crtanje-preseka';
     viewer.world.add(this.group);
@@ -46,6 +74,7 @@ export class SectionDrawTool {
   start() {
     this.active = true;
     this.points = [];
+    this._cursor = null;
     this._redraw();
     this.v.renderer.domElement.classList.add('drawing');
   }
@@ -72,17 +101,15 @@ export class SectionDrawTool {
     else this.onCancel?.();
   }
 
-  _hit(e) {
-    this.v.setPointer(e);
-    const mesh = this.getTerrainMesh();
-    if (!mesh) return null;
-    const hit = this.v.raycaster.intersectObject(mesh, false)[0];
-    if (!hit) return null;
-    const p = this.v.world.worldToLocal(hit.point.clone());
-    return { E: p.x + this.terrain.E0, N: -p.z + this.terrain.N0 };
+  /** Tačka ispod kursora: prvo hvatanje za istražni rad, pa teren (uz Shift ugaoni korak). */
+  _pointAt(e) {
+    const s = snapToProbe(this.v, this.getSnapTargets?.(), e.clientX, e.clientY);
+    if (s) return s;
+    const p = terrainPoint(this.v, this.getTerrainMesh(), this.terrain, e);
+    return p ? this._angleSnap(p, e) : null;
   }
 
-  _snap(p, e) {
+  _angleSnap(p, e) {
     const last = this.points[this.points.length - 1];
     if (!last || !e.shiftKey) return p;
     const dx = p.E - last.E, dy = p.N - last.N, L = Math.hypot(dx, dy);
@@ -95,17 +122,16 @@ export class SectionDrawTool {
     const [x, y] = this._down;
     this._down = null;
     if (Math.hypot(e.clientX - x, e.clientY - y) > 5) return; // bilo je prevlačenje (rotacija)
-    const p = this._hit(e);
+    const p = this._pointAt(e);
     if (!p) return;
-    this.points.push(this._snap(p, e));
+    this.points.push(p);
     this._redraw();
   }
 
   _move(e) {
-    if (!this.active || !this.points.length) return;
-    const p = this._hit(e);
-    if (!p) return;
-    this._cursor = this._snap(p, e);
+    if (!this.active) return;
+    const p = this._pointAt(e);
+    this._cursor = p;
     this._redraw(true);
   }
 
@@ -123,12 +149,175 @@ export class SectionDrawTool {
       this.group.add(pl);
     }
     for (const p of pts) this.group.add(vertexMarker(p, this.terrain, this.v.world.scale.y));
-    if (!previewOnly) this.onChange?.(pts);
-    else {
-      const L = pts.reduce((s, p, i) => (i ? s + Math.hypot(p.E - pts[i - 1].E, p.N - pts[i - 1].N) : 0), 0) +
-        (this._cursor && pts.length ? Math.hypot(this._cursor.E - pts[pts.length - 1].E, this._cursor.N - pts[pts.length - 1].N) : 0);
-      this.onChange?.(pts, L);
+    // pokazivač hvatanja (i pre prvog temena)
+    if (this.active && this._cursor?.snap) this.group.add(vertexMarker(this._cursor, this.terrain, this.v.world.scale.y, 0x1d2228, 1.6));
+    const L = pts.reduce((s, p, i) => (i ? s + Math.hypot(p.E - pts[i - 1].E, p.N - pts[i - 1].N) : 0), 0) +
+      (previewOnly && this._cursor && pts.length ? Math.hypot(this._cursor.E - pts[pts.length - 1].E, this._cursor.N - pts[pts.length - 1].N) : 0);
+    this.onChange?.(pts, L, this.active ? this._cursor?.snap : null);
+  }
+}
+
+/** Presek terena pod kursorom → {E, N} ili null. */
+export function terrainPoint(viewer, mesh, terrain, e) {
+  if (!mesh || !terrain) return null;
+  viewer.setPointer(e);
+  const hit = viewer.raycaster.intersectObject(mesh, false)[0];
+  if (!hit) return null;
+  const p = viewer.world.worldToLocal(hit.point.clone());
+  return { E: p.x + terrain.E0, N: -p.z + terrain.N0 };
+}
+
+/**
+ * Izmena postojećeg preseka: prevlačenje temena po terenu (sa hvatanjem za istražne radove),
+ * desni klik na teme ga briše (ako ostaju bar 2), dvoklik na liniju preseka dodaje novo teme.
+ */
+export class SectionEditor {
+  constructor(viewer, parent, { getTerrainMesh, getTerrain, getSnapTargets, onCommit, onDragStart }) {
+    this.v = viewer;
+    this.getTerrainMesh = getTerrainMesh; this.getTerrain = getTerrain;
+    this.getSnapTargets = getSnapTargets; this.onCommit = onCommit; this.onDragStart = onDragStart;
+    this.group = new THREE.Group();
+    this.group.name = 'izmena-preseka';
+    parent.add(this.group);
+    this.sec = null;
+    this.enabled = true;
+    this.dragging = null;
+    this.justEnded = false;
+    this.lineMat = new LineMaterial({ color: 0xff3b30, linewidth: 3, depthTest: false, transparent: true });
+    viewer.onFrame(() => {
+      const r = viewer.renderer.domElement;
+      this.lineMat.resolution.set(r.width, r.height);
+      // ručke stalne veličine na ekranu (≈ px poluprečnik), nezavisno od udaljenosti kamere
+      const cam = viewer.camera, k = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, r.clientHeight);
+      for (const m of this.group.children) {
+        if (!m.userData.px) continue;
+        m.getWorldPosition(_v);
+        const s = (m.userData.px * _v.distanceTo(cam.position) * k) / m.userData.r0;
+        m.scale.set(s, s / viewer.world.scale.y, s);
+      }
+    });
+    const el = viewer.renderer.domElement;
+    // capture: hvatamo događaj pre OrbitControls (na ciljnom elementu capture slušaoci idu prvi)
+    el.addEventListener('pointerdown', (e) => this._down(e), { capture: true });
+    el.addEventListener('pointermove', (e) => this._move(e), { capture: true });
+    el.addEventListener('pointerup', (e) => this._up(e), { capture: true });
+    el.addEventListener('contextmenu', (e) => this._context(e), { capture: true });
+    el.addEventListener('dblclick', (e) => this._dbl(e), { capture: true });
+  }
+
+  setSection(sec) { this.sec = sec; this._rebuild(); }
+
+  get handles() { return this.group.children.filter((c) => c.userData.handle != null); }
+
+  _rebuild(withLine = false) {
+    for (const c of [...this.group.children]) { this.group.remove(c); c.geometry?.dispose?.(); }
+    const t = this.getTerrain();
+    if (!this.sec || !t || !this.enabled) return;
+    this.sec.vertices.forEach((p, i) => {
+      const m = vertexMarker(p, t, this.v.world.scale.y, p.snap ? 0x1d2228 : 0xffffff, 1);
+      m.userData.handle = i;
+      m.userData.px = 5;
+      m.userData.r0 = m.geometry.parameters.radius;
+      // crveni obod
+      const ring = vertexMarker(p, t, this.v.world.scale.y, 0xff3b30, 1);
+      ring.renderOrder = 20;
+      ring.userData.px = 7.5;
+      ring.userData.r0 = ring.geometry.parameters.radius;
+      this.group.add(ring, m);
+    });
+    if (withLine) this.group.add(drapedLine(this.sec.vertices, t, this.lineMat, 0.3));
+  }
+
+  _hitHandle(e) {
+    if (!this.sec || !this.enabled) return null;
+    this.v.setPointer(e);
+    const h = this.v.raycaster.intersectObjects(this.handles, false)[0];
+    if (h) return h.object.userData.handle;
+    // i u pikselima (sfere su male)
+    const r = this.v.renderer.domElement.getBoundingClientRect();
+    let best = null, bd = 12;
+    this.handles.forEach((m) => {
+      m.getWorldPosition(_v).project(this.v.camera);
+      const d = Math.hypot(r.left + ((_v.x + 1) / 2) * r.width - e.clientX, r.top + ((1 - _v.y) / 2) * r.height - e.clientY);
+      if (d < bd) { bd = d; best = m.userData.handle; }
+    });
+    return best;
+  }
+
+  _down(e) {
+    if (e.button !== 0) return;
+    const i = this._hitHandle(e);
+    if (i == null) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    this.dragging = i;
+    this._downAt = [e.clientX, e.clientY];
+    this.v.controls.enabled = false;
+    this.v.renderer.domElement.setPointerCapture(e.pointerId);
+    this.onDragStart?.(this.sec);
+  }
+
+  _move(e) {
+    if (this.dragging == null) {
+      if (this.sec && this.enabled && !e.buttons) this.v.renderer.domElement.style.cursor = this._hitHandle(e) != null ? 'grab' : '';
+      return;
     }
+    e.stopImmediatePropagation();
+    this._dragTo(e);
+    this.v.renderer.domElement.style.cursor = 'grabbing';
+  }
+
+  _dragTo(e) {
+    // pomeraj manji od 4 px = samo klik na teme, bez pomeranja
+    if (this._downAt && Math.hypot(e.clientX - this._downAt[0], e.clientY - this._downAt[1]) < 4) return;
+    const t = this.getTerrain();
+    const p = snapToProbe(this.v, this.getSnapTargets?.(), e.clientX, e.clientY) || terrainPoint(this.v, this.getTerrainMesh(), t, e);
+    if (!p) return;
+    this.sec.vertices = this.sec.vertices.map((q, k) => (k === this.dragging ? p : q));
+    this._rebuild(true);
+  }
+
+  _up(e) {
+    if (this.dragging == null) return;
+    e.stopImmediatePropagation();
+    this._dragTo(e); // konačna pozicija (i kad pregledač ne pošalje međukorake pomeranja)
+    this.dragging = null;
+    this.v.controls.enabled = true;
+    this.justEnded = true;
+    setTimeout(() => (this.justEnded = false), 0);
+    this.v.renderer.domElement.style.cursor = '';
+    this.onCommit?.(this.sec);
+  }
+
+  _context(e) {
+    const i = this._hitHandle(e);
+    if (i == null) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (this.sec.vertices.length <= 2) return;
+    this.sec.vertices = this.sec.vertices.filter((_, k) => k !== i);
+    this.onCommit?.(this.sec);
+  }
+
+  _dbl(e) {
+    if (!this.sec || !this.enabled) return;
+    const t = this.getTerrain();
+    const p = terrainPoint(this.v, this.getTerrainMesh(), t, e);
+    if (!p) return;
+    // najbliži segment; ubaci teme ako je klik na ≤ 3 % dužine preseka od linije
+    const V = this.sec.vertices;
+    let best = null;
+    for (let i = 1; i < V.length; i++) {
+      const a = V[i - 1], b = V[i], dx = b.E - a.E, dy = b.N - a.N, L2 = dx * dx + dy * dy || 1;
+      const tt = Math.min(1, Math.max(0, ((p.E - a.E) * dx + (p.N - a.N) * dy) / L2));
+      const d = Math.hypot(p.E - (a.E + dx * tt), p.N - (a.N + dy * tt));
+      if (!best || d < best.d) best = { d, i };
+    }
+    const len = V.reduce((s, q, i) => (i ? s + Math.hypot(q.E - V[i - 1].E, q.N - V[i - 1].N) : 0), 0);
+    if (!best || best.d > Math.max(2, len * 0.03)) return;
+    e.stopImmediatePropagation();
+    this.sec.vertices = [...V.slice(0, best.i), p, ...V.slice(best.i)];
+    this.onCommit?.(this.sec);
   }
 }
 
@@ -152,10 +341,11 @@ export function drapedLine(pts, terrain, material, lift = 0.25) {
   return l;
 }
 
-function vertexMarker(p, terrain, ve) {
+function vertexMarker(p, terrain, ve, color = 0xff3b30, scale = 1) {
   const z = terrain.elevationAt(p.E, p.N);
-  const m = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.6, terrain.extent.width / 300), 16, 12), new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false }));
-  m.position.set(p.E - terrain.E0, z - terrain.Z0, -(p.N - terrain.N0));
+  const r = Math.max(0.6, terrain.extent.width / 300) * scale;
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), new THREE.MeshBasicMaterial({ color, depthTest: false }));
+  m.position.set(p.E - terrain.E0, (isFinite(z) ? z : terrain.bounds.minZ) - terrain.Z0, -(p.N - terrain.N0));
   m.scale.y = 1 / ve;
   m.renderOrder = 21;
   return m;

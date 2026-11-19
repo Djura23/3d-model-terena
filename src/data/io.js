@@ -7,6 +7,8 @@
 //   Legenda sredina:  sredina;naziv;boja;redosled   (opciono)
 // Separator ; , ili tab. Decimalni zarez je dozvoljen uz separator ; ili tab.
 
+import { trendIdw } from '../core/gwl.js';
+
 const PALETTE = ['#c9b79c', '#a87b55', '#ecd27a', '#dc9a52', '#8d9eac', '#7fa77a', '#b98bb5', '#d4a373', '#6d8fb3', '#c46b5a', '#9aa36b', '#5f5e5a'];
 
 const pn = (s, dec) => {
@@ -237,31 +239,6 @@ export function projectToStaging(p) {
   return st;
 }
 
-function idwPoints(pts, x, y, power = 2) {
-  let sw = 0, sv = 0;
-  for (const p of pts) {
-    const d2 = (p[0] - x) ** 2 + (p[1] - y) ** 2;
-    if (d2 < 1e-6) return p[2];
-    const w = 1 / Math.pow(d2, power / 2);
-    sw += w; sv += w * p[2];
-  }
-  return sv / sw;
-}
-
-/** z = a + b·x + c·y (najmanji kvadrati); za < 3 tačke ili degenerisan slučaj — horizontalna ravan. */
-function fitPlane(P) {
-  const n = P.length;
-  const mean = P.reduce((s, p) => s + p[2], 0) / n;
-  if (n < 3) return [mean, 0, 0];
-  let sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, sxz = 0, syz = 0, sz = 0;
-  for (const [x, y, z] of P) { sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y; sxz += x * z; syz += y * z; sz += z; }
-  const A = [[n, sx, sy], [sx, sxx, sxy], [sy, sxy, syy]], B = [sz, sxz, syz];
-  const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
-  const D = det(A);
-  if (Math.abs(D) < 1e-9) return [mean, 0, 0];
-  return [0, 1, 2].map((k) => det(A.map((row, i) => row.map((v, j) => (j === k ? B[i] : v)))) / D);
-}
-
 /** Staging → projekat. Vraća {project, warnings}. */
 export function stagingToProject(st) {
   const warnings = [];
@@ -289,14 +266,11 @@ export function stagingToProject(st) {
       const pad = Math.max(10, 0.12 * Math.max(e1 - e0, n1 - n0));
       e0 -= pad; e1 += pad; n0 -= pad; n1 += pad;
       // ravan trenda (najmanji kvadrati) + IDW odstupanja → bez "meta" oko tačaka na nagnutom terenu
-      const ce = (e0 + e1) / 2, cn = (n0 + n1) / 2;
-      const tr = fitPlane(src.map((q) => [q[0] - ce, q[1] - cn, q[2]]));
-      const plane = (e, n) => tr[0] + tr[1] * (e - ce) + tr[2] * (n - cn);
-      const resid = src.map((q) => [q[0], q[1], q[2] - plane(q[0], q[1])]);
+      const zAt = trendIdw(src, 2);
       const N = 90, pts = [];
       for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
         const e = e0 + ((e1 - e0) * i) / N, n = n0 + ((n1 - n0) * j) / N;
-        pts.push([e, n, plane(e, n) + idwPoints(resid, e, n, 2)]);
+        pts.push([e, n, zAt(e, n)]);
       }
       p.terrain = { points: pts, derived: true, source: topo };
       warnings.push(`i Teren interpoliran (trend + IDW) iz ${src.length} tačaka — za tačan model učitaj topografiju (Y;X;Z).`);
