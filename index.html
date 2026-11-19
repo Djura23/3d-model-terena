@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="sr-Latn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GeoTeren 3D</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 22l8-9 6 5 6-8 8 12z' fill='%23dc9a52'/%3E%3Cpath d='M2 22h28v6H2z' fill='%23a87b55'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="22" height="22"><path d="M2 20l8-9 6 5 6-8 8 12z" fill="#dc9a52"/><path d="M2 20h28v4H2z" fill="#a87b55"/><path d="M2 24h28v4H2z" fill="#8d9eac"/></svg>
+      <span>GeoTeren <b>3D</b></span>
+    </div>
+    <div class="proj">
+      <input id="projName" class="proj-name" spellcheck="false" title="Naziv projekta" />
+      <span id="projCrs" class="proj-crs"></span>
+    </div>
+    <div class="top-actions">
+      <label class="btn" title="Učitaj CSV/TXT/XYZ tabele ili .json projekat (može više fajlova odjednom, ili ih prevuci na prozor)">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12m0-12l-4 4m4-4l4 4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></svg>Uvoz
+        <input type="file" id="fileInput" multiple accept=".csv,.txt,.tsv,.xyz,.json" hidden />
+      </label>
+      <button class="btn" id="btnDemo" title="Učitaj demonstracioni projekat">Primer</button>
+      <div class="menu-wrap">
+        <button class="btn" id="btnExport">
+          <svg viewBox="0 0 24 24"><path d="M12 15V3m0 12l-4-4m4 4l4-4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></svg>Izvoz ▾
+        </button>
+        <div class="menu" id="exportMenu">
+          <button data-exp="json">Projekat (.json)</button>
+          <button data-exp="csv">Tabele (CSV, format za uvoz)</button>
+          <button data-exp="png3d">Snimak 3D prikaza (.png)</button>
+        </div>
+      </div>
+      <button class="btn icon" id="btnHelp" title="Uputstvo i formati podataka">?</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar" id="sidebar">
+      <section class="panel">
+        <h3>Prikaz</h3>
+        <div class="toggles">
+          <label><input type="checkbox" data-layer="terrain" checked /> Teren</label>
+          <label><input type="checkbox" data-layer="contours" checked /> Izohipse</label>
+          <label><input type="checkbox" data-layer="grid" /> Koordinatna mreža</label>
+          <label><input type="checkbox" data-layer="bh" checked /> <i class="sym sym-bh"></i>Bušotine</label>
+          <label><input type="checkbox" data-layer="cpt" checked /> <i class="sym sym-cpt"></i>CPT</label>
+          <label><input type="checkbox" data-layer="dpsh" checked /> <i class="sym sym-dpsh"></i>DPSH-B</label>
+          <label><input type="checkbox" data-layer="gwl" checked /> <i class="sym sym-gwl"></i>NPV</label>
+          <label><input type="checkbox" data-layer="labels" checked /> Oznake</label>
+          <label><input type="checkbox" data-layer="block" checked /> Geološki model</label>
+          <label><input type="checkbox" data-layer="curtain" checked /> Preseci u 3D</label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Podešavanja</h3>
+        <div class="ctl"><span>Vertikalno uveličanje</span><input type="range" id="ve" min="1" max="10" step="0.5" value="2" /><output id="veOut">2×</output></div>
+        <div class="ctl"><span>Providnost terena</span><input type="range" id="terrOp" min="0" max="1" step="0.05" value="1" /><output id="terrOpOut">100%</output></div>
+        <div class="ctl"><span>Providnost modela</span><input type="range" id="blockOp" min="0.1" max="1" step="0.05" value="1" /><output id="blockOpOut">100%</output></div>
+        <div class="ctl"><span>Razmicanje slojeva</span><input type="range" id="explode" min="0" max="10" step="0.5" value="0" /><output id="explodeOut">0 m</output></div>
+        <div class="ctl"><span>Veličina simbola</span><input type="range" id="symScale" min="0.4" max="3" step="0.1" value="1" /><output id="symOut">1,0×</output></div>
+        <div class="ctl"><span>Izohipse na</span><select id="contourInt"></select></div>
+        <div class="ctl"><span>Boja CPT</span><select id="cptColor"><option value="sbt">SBTn zona (Robertson)</option><option value="qc">q<sub>c</sub> (log skala)</option></select></div>
+      </section>
+
+      <section class="panel">
+        <h3>Litološke jedinice <small class="muted">(klik = sakrij u modelu)</small></h3>
+        <div id="soilLegend" class="legend"></div>
+        <details class="sublegend">
+          <summary>CPT — SBTn zone</summary>
+          <div id="sbtLegend" class="legend small"></div>
+        </details>
+        <details class="sublegend">
+          <summary>DPSH-B — klase zbijenosti</summary>
+          <div id="dpshLegend" class="legend small"></div>
+        </details>
+      </section>
+
+      <section class="panel">
+        <h3>Istražni radovi <small id="probeCount" class="muted"></small></h3>
+        <input id="probeFilter" class="search" placeholder="Traži oznaku…" />
+        <div id="probeList" class="probe-list"></div>
+      </section>
+
+      <section class="panel">
+        <h3>Preseci</h3>
+        <div id="sectionList" class="section-list"></div>
+        <button class="btn wide accent" id="btnDraw2">✎ Nacrtaj novi presek</button>
+      </section>
+    </aside>
+
+    <div class="stage">
+      <div class="viewport" id="viewport">
+        <div class="toolbar">
+          <button class="tbtn accent" id="btnDraw" title="Klikom po terenu zadaj temena preseka; dvoklik ili Enter završava">
+            <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="7" r="1.6"/></svg>
+            <span>Nacrtaj presek</span>
+          </button>
+          <span class="sep"></span>
+          <button class="tbtn" id="btnHome" title="Ceo model"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          <button class="tbtn" id="btnTop" title="Pogled odozgo (plan)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/></svg></button>
+          <button class="tbtn" id="btnSide" title="Pogled sa juga"><svg viewBox="0 0 24 24"><path d="M3 16l5-5 4 3 4-5 5 7"/><path d="M3 20h18"/></svg></button>
+          <button class="tbtn" id="btnClip" title="Odseci teren i model duž aktivnog preseka (Shift+klik: okreni stranu)" disabled><svg viewBox="0 0 24 24"><path d="M6 3v18M18 3v18M6 12h12"/><path d="M14 8l4 4-4 4"/></svg></button>
+          <button class="tbtn" id="btnMeasure" title="Merenje rastojanja i nagiba (klik–klik)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
+        </div>
+        <div class="draw-hint" id="drawHint" hidden>
+          <b>Crtanje preseka:</b> klik — teme · <kbd>Shift</kbd> — korak 15° · dvoklik / <kbd>Enter</kbd> — kraj · <kbd>Backspace</kbd> — poništi · <kbd>Esc</kbd> — odustani
+          <span id="drawLen"></span>
+        </div>
+        <div class="compass" id="compass" title="Okreni ka severu"><div class="needle"><span>S</span></div></div>
+        <div class="status" id="status"><span class="muted">Pomeri miš preko terena…</span></div>
+        <div class="hover-tip" id="hoverTip" hidden></div>
+      </div>
+
+      <div class="profile-drawer" id="drawer" hidden>
+        <div class="drawer-resize" id="drawerResize"></div>
+        <div class="drawer-head">
+          <select id="secSelect" class="sec-select"></select>
+          <div class="ctl inline"><span>Koridor ±</span><input type="number" id="secBuffer" min="0" max="500" step="1" value="20" /><span>m</span></div>
+          <div class="ctl inline"><span>Uveličanje</span>
+            <select id="secVe"><option value="auto">auto</option><option>1</option><option>2</option><option>2.5</option><option>5</option><option>10</option><option>20</option></select>
+          </div>
+          <label class="chk"><input type="checkbox" id="secGeo" checked /> interpretacija</label>
+          <div class="ctl inline"><span>CPT</span><input type="range" id="secCptScale" min="1" max="12" step="0.5" value="4" title="px po MPa" /></div>
+          <div class="ctl inline"><span>DPSH</span><input type="range" id="secDpScale" min="0.5" max="5" step="0.1" value="1" title="px po udarcu" /></div>
+          <span class="grow"></span>
+          <span id="secReadout" class="readout"></span>
+          <button class="btn" id="secView" title="Odseci model po preseku i postavi kameru upravno na presek">⊥ 3D pogled</button>
+          <button class="btn" id="secSvg">SVG</button>
+          <button class="btn" id="secPng">PNG</button>
+          <button class="btn icon" id="drawerMax" title="Uvećaj">⤢</button>
+          <button class="btn icon" id="drawerClose" title="Zatvori">✕</button>
+        </div>
+        <div class="drawer-body" id="profileHost"></div>
+      </div>
+    </div>
+
+    <aside class="infopanel" id="infopanel" hidden>
+      <div class="info-head">
+        <div>
+          <div class="info-kind" id="infoKind"></div>
+          <h2 id="infoTitle"></h2>
+        </div>
+        <button class="btn icon" id="infoClose">✕</button>
+      </div>
+      <div class="info-body" id="infoBody"></div>
+    </aside>
+  </main>
+
+  <div class="toasts" id="toasts"></div>
+  <div class="drop-overlay" id="dropOverlay" hidden><div>Pusti fajlove za uvoz<br /><small>CSV · TXT · XYZ · JSON</small></div></div>
+
+  <dialog id="helpDlg" class="dlg">
+    <div class="dlg-head"><h2>Uputstvo</h2><button class="btn icon" onclick="this.closest('dialog').close()">✕</button></div>
+    <div class="dlg-body">
+      <h4>Upravljanje</h4>
+      <ul>
+        <li><b>Levi taster</b> — rotacija · <b>desni taster / Shift+levi</b> — pomeranje · <b>točkić</b> — zum ka kursoru</li>
+        <li><b>Klik</b> na bušotinu/sondu — detalji i dijagram · <b>dvoklik</b> u listi — prelet do tačke</li>
+        <li><b>Nacrtaj presek</b> — klikovi po terenu zadaju temena (poligonalna linija), dvoklik/Enter završava. Shift zaključava pravac na 15°.</li>
+        <li>U 2D profilu pomeranje miša pokazuje kotu, dubinu i jedinicu; ista tačka se obeležava i u 3D.</li>
+      </ul>
+      <h4>Formati za uvoz (zaglavlje obavezno, redosled kolona nebitan)</h4>
+      <pre>Tačke:            ID;tip;Y;X;Z;dubina;NPV          tip = B | CPT | DPSH
+Slojevi bušotina: ID;od;do;sredina;opis
+CPT / CPTu:       ID;dubina;qc;fs;u2               qc [MPa ili kPa], fs i u2 [kPa]
+DPSH-B:           ID;dubina;N20   (ili N10)
+Topografija:      Y;X;Z   ili   .xyz bez zaglavlja
+Legenda (opc.):   sredina;naziv;boja;redosled      boja npr. #a87b55</pre>
+      <p>Separator <code>;</code>, <code>,</code> ili tab; decimalni zarez dozvoljen uz <code>;</code>. Gaus-Krigerove koordinate (Y = istok, X = sever) prepoznaju se automatski. NPV i dubine su od kote terena, Z je kota ušća. Ako CPT/DPSH fajl nema kolonu ID, oznaka se uzima iz imena fajla (npr. <code>CPT-3.csv</code>).</p>
+      <h4>Metodologija</h4>
+      <ul>
+        <li><b>Teren</b>: Delaunay TIN iz topografskih tačaka (bez izmišljanja između tačaka). Ako topografije nema, površ se interpolira iz kota ušća (IDW) — uz upozorenje.</li>
+        <li><b>Geološki model</b>: debljine jedinica interpolirane IDW metodom i slagane od terena naniže — prolazi tačno kroz bušotine, granice se ne seku. Bušotina koja nije probila jedinicu daje samo donju granicu debljine. To je <i>interpretacija</i>; u preseku je prikazana isprekidanim granicama.</li>
+        <li><b>CPT</b>: q<sub>t</sub> = q<sub>c</sub> + u<sub>2</sub>(1−a), γ po Robertson &amp; Cabal (2010), Q<sub>tn</sub>, F<sub>r</sub>, I<sub>c</sub> iterativno (Robertson 2009), SBTn zone 2–7 po I<sub>c</sub>. Poluprečnik 3D stuba ~ log q<sub>c</sub>.</li>
+        <li><b>DPSH-B</b> (SRPS EN ISO 22476-2): N20; N10 se za klasifikaciju svodi na N20 ekv. (×2). Klase zbijenosti su indikativne.</li>
+      </ul>
+    </div>
+  </dialog>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

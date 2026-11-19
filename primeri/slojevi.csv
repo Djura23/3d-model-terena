@@ -1,0 +1,37 @@
+﻿ID;od;do;sredina;opis
+B-1;0,00;0,30;HU;Humus, tamnosmeđi, sa korenjem
+B-1;0,30;3,30;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-1;3,30;5,80;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-1;5,80;12,20;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen
+B-1;12,20;18,00;LP;Laporac sivoplavi, raspadnut u gornjem delu
+B-2;0,00;0,40;HU;Humus, tamnosmeđi, sa korenjem
+B-2;0,40;4,10;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-2;4,10;4,50;ML;Prašina peskovita, žutosmeđa, vlažna
+B-2;4,50;7,70;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-2;7,70;15,20;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen
+B-2;15,20;20,00;LP;Laporac sivoplavi, raspadnut u gornjem delu
+B-3;0,00;0,40;HU;Humus, tamnosmeđi, sa korenjem
+B-3;0,40;3,00;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-3;3,00;4,40;ML;Prašina peskovita, žutosmeđa, vlažna
+B-3;4,40;13,00;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-3;13,00;19,70;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen
+B-3;19,70;20,00;LP;Laporac sivoplavi, raspadnut u gornjem delu
+B-4;0,00;0,50;HU;Humus, tamnosmeđi, sa korenjem
+B-4;0,50;2,90;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-4;2,90;3,90;ML;Prašina peskovita, žutosmeđa, vlažna
+B-4;3,90;16,20;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-4;16,20;18,00;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen
+B-5;0,00;0,40;HU;Humus, tamnosmeđi, sa korenjem
+B-5;0,40;3,10;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-5;3,10;3,50;ML;Prašina peskovita, žutosmeđa, vlažna
+B-5;3,50;10,10;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-5;10,10;16,00;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen
+B-6;0,00;0,30;HU;Humus, tamnosmeđi, sa korenjem
+B-6;0,30;4,60;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-6;4,60;12,20;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-6;12,20;15,00;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen
+B-7;0,00;0,30;HU;Humus, tamnosmeđi, sa korenjem
+B-7;0,30;2,90;CL;Glina prašinasta, smeđa, tvrdo plastične do plastične konzistencije
+B-7;2,90;4,70;ML;Prašina peskovita, žutosmeđa, vlažna
+B-7;4,70;16,50;SP;Pesak sitnozrni, žut, srednje zbijen, vodozasićen
+B-7;16,50;20,00;GW;Šljunak peskovit, sivožut, zbijen, vodozasićen

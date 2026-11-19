@@ -1,0 +1,21 @@
+{
+  "name": "geoteren-3d",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Interaktivni 3D model terena sa bušotinama, CPT i DPSH-B ispitivanjima i geotehničkim presecima",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "primeri": "node scripts/export-samples.mjs"
+  },
+  "dependencies": {
+    "delaunator": "^5.0.1",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.6",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}
